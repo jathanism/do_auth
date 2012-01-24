@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 # Program I threw together to do the things tac_plus won't
 # It allows very granular control. For more info/update see tacacs.org
@@ -31,6 +31,9 @@
 # Fixed reression
 # Support for replacing av pairs
 
+# Version 1.8
+# Nexus support (tac_pair format different)
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -38,7 +41,7 @@
 
 '''
 do_auth.py [-options]
-Version 1.7
+Version 1.8
 do_auth is a python program I wrote to work as an authorization script for 
 tacacs to allow greater flexability in tacacs authentication.  It allows
 a user to be part of many predefined groups that can allow different
@@ -282,8 +285,10 @@ def main():
     the_command = ""
     return_pairs = ""
     if (av_pairs[0] == "service=shell\n"):  
+        if av_pairs[1] == ("cmd=\n"): # #&*@ Nexus!
+            return_pairs = av_pairs
 #Commands - Concatenate to a readable command
-        if av_pairs[1].startswith("cmd="):
+        elif av_pairs[1].startswith("cmd="):
             our_command = av_pairs[1].split("=")
             the_command = our_command[1].strip('\n')
             if len(av_pairs) > 2:
@@ -298,7 +303,7 @@ def main():
             #DEBUG - We got the command
             #log_file.write(the_command + '\n')
 #Login - Get av_pairs to pass back to tac_plus
-        if av_pairs[1].startswith("cmd*"):  #Anybody know why it's "cmd*"?
+        elif av_pairs[1].startswith("cmd*"):  #Anybody know why it's "cmd*"?
             if len(av_pairs) > 2:
                 return_pairs = av_pairs[2:] #You have to strip the "cmd*" av-pair
     else:
@@ -404,9 +409,9 @@ def main():
                          % (user_name, device, this_group, ip_addr))
                     return_pairs = av_pairs[2:] # Cut the first two?
                     #DEBUG
-                    #for item in return_pairs:
-                        #log_file.write("Returning:%s\n" % item.strip())
-                        #print item.strip('\n')
+                    for item in return_pairs:
+                    #    log_file.write("Returning:%s\n" % item.strip())
+                        print item.strip('\n')
                     if want_tac_pairs:
                         sys.exit(2)
                     else:

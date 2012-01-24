@@ -5,15 +5,22 @@ do_auth.py
 Versions
 ========
 
-1.2
+1.8
 ---
 
-http://pastie.org/506002
++ Nexus support (tac_pair format different)
+
 
 1.7
 ---
 
 http://www.pastie.org/2499657
+
+1.2
+---
+
+http://pastie.org/506002
+
 
 Usage
 =====
