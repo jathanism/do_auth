@@ -5,6 +5,13 @@ do_auth.py
 Versions
 ========
 
+1.9
+---
+
++ Better Nexus Support
++ Only send roles to Nexus
++ Better av pair replacement
+
 1.8
 ---
 

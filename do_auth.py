@@ -1,7 +1,8 @@
 #!/usr/bin/python
 
 # Program I threw together to do the things tac_plus won't
-# It allows very granular control. For more info/update see tacacs.org
+# It allows very granular control. Please visit tacacs.org as
+# this is continually updated
 
 # History:
 # Version 1.1
@@ -34,6 +35,11 @@
 # Version 1.8
 # Nexus support (tac_pair format different)
 
+# Version 1.9
+# Better Nexus Support
+# Only send roles to Nexus
+# Better av pair replacement
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -41,7 +47,7 @@
 
 '''
 do_auth.py [-options]
-Version 1.8
+Version 1.9
 do_auth is a python program I wrote to work as an authorization script for 
 tacacs to allow greater flexability in tacacs authentication.  It allows
 a user to be part of many predefined groups that can allow different
@@ -74,7 +80,7 @@ device_deny Deny any device with this IP.  Optional.
 device_permit   Allow this range.  Mandatory if -d is specified
 command_deny    Deny these commands.  Optional.
 command_permit  Allow these commands.  Mandatory.
-av_pairs    list of av pairs to replace if found. Advanced - use with care 
+av_pairs    list of av pairs to replace if found. Optional - be careful 
 
 The options are parsed in order till a match is found.  Obviously, 
 for login, the commands section is not parsed.  If a match is not
@@ -114,24 +120,83 @@ Example tacacs line: after authorization "/usr/bin/python
 
 Example av_pair:
 The following example will replace any priv-lvl with priv-lvl=1 ONLY if passed.
-Think of it as a find/replace function.
+Think of "av_pairs" as a find/replace function.
 
 av_pairs =
     priv-lvl=1
 
-Roles do not work - reason as of yet unknown. 
+Brocade has a brocade-privlvl which I like.  It maps priv-lvl to 
+brocade-privlvl, but priv-lvl=1 results in interface privileges.  Here
+is an example of how to map to brocade-privlvl=5 which has no modification
+rights.  Unfortunately, it does require you to put in the IP's of your gear.
+The following group would go before other groups:
+
+[brocade_readonly]
+host_allow =
+    .*
+device_permit =
+    192.168.1.*
+command_permit =
+    .*
+av_pairs =
+    priv-lvl,brocade-privlvl=5
+
+You could also put "priv-lvl=15,brocade-privlvl=5" or whatever your
+tac_plus deamon is passing; as long as it's a match it accomplished the same
+thing.  In this example, we essentially replace the whole av_pair resulting 
+in the user having only read access.  Alternatively, a good "disable account"
+can be created by simpley doing:
+
+av_pairs =
+    brocade-privlvl=5
+
+This results in the brocades having read/only, and the Cisco's go into disable
+because they don't understand it.  (We're assuming that the user has no enable
+account or the priv-lvl is pointless)  You could also add a shell role for nexus,
+which we will discuss next.  (shell:roles="network-admin")  
+
+NEXUS - Due to a slight change in the nexus, do_auth is able to 
+discern if a device is a nexus or not.  In tac_plus, do the following:
+
+        service = exec {
+                priv-lvl = 1 
+                shell:roles=\"\\"network-operator\\""
+                idletime = 3 
+                timeout = 15
+        }   
+        after authorization <do_auth yada yada>
+
+This configuration does NOT work without do_auth.  However, WITH do_auth, 
+do_auth will only send shell:roles to Nexus switches, allowing your
+other gear to work correctly.  Simply put av_pairs in your do_auth, and
+it will figure it out for you.  (If not, it won't touch them.   The logic is
+simple: If (av_pairs in .ini): Then (do_stuff), Else (exit(2)- Don't modify 'em!))
+
+Roles can also be modified in a do_auth group, as below:
+
+av_pairs = 
+        priv-lvl=15
+        shell:roles="network-admin"
+
+Also of note, you MUST USE DOUBLE QUOTES to get tac_plus to correctly
+pass "network-operator" in the service example above.  UNLESS you are 
+modifying the key with do_auth in av_pairs - it will fix the quotes.
 
 BUGS: You must know your regular expressions.  If you enter a bad
 expression, such as *. instead of .*, python re will freak out and 
-not evaluate the expression.  
+not evaluate the expression. (Thought about netaddr, but would you
+really install it?)
 
-CAVEATS: One group can not take away what another group grants.  If
-a match is not found, it will go on to the next group.  If a deny is 
+CAVEATS: One group can not take away what another group grants via deny.
+If a match is not found, it will go on to the next group.  If a deny is 
 matched, it will go on to the next group.  
 Order is crucial - the groups should go from more specific to less 
 specific.  In the above example, if television_group was put before
 simpson_group, simpson_group would never be called because 
 televsion_group catches everything in device_permit.  
+
+HELP: If somebody has a WLC or other unknown network equipment, I 
+require some testing/sniffing done - thanks!!
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License version 3 or any
@@ -143,7 +208,7 @@ WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 General Public License for more details.
 
-Written by Dan Schmidt
+Written by Dan Schmidt - Please visit tacacs.org to check for updates.
 '''
 
 import sys,re,getopt,ConfigParser
@@ -286,7 +351,10 @@ def main():
     return_pairs = ""
     if (av_pairs[0] == "service=shell\n"):  
         if av_pairs[1] == ("cmd=\n"): # #&*@ Nexus!
-            return_pairs = av_pairs
+            if len(av_pairs) > 2:
+                #DEBUG
+                # log_file.write('Nexus pairs found\n')
+                return_pairs = av_pairs[2:] #strip the "cmd=" for consistency
 #Commands - Concatenate to a readable command
         elif av_pairs[1].startswith("cmd="):
             our_command = av_pairs[1].split("=")
@@ -305,7 +373,11 @@ def main():
 #Login - Get av_pairs to pass back to tac_plus
         elif av_pairs[1].startswith("cmd*"):  #Anybody know why it's "cmd*"?
             if len(av_pairs) > 2:
-                return_pairs = av_pairs[2:] #You have to strip the "cmd*" av-pair
+                return_pairs = av_pairs[2:] #You MUST strip the "cmd*" av-pair
+# Definately not a Nexus, so strip any nexus pair 
+            for item in return_pairs:
+                if item.startswith("shell:roles"):
+                    return_pairs.remove(item)
     else:
          return_pairs = av_pairs
     if not user_name:
@@ -381,16 +453,24 @@ def main():
                     #    log_file.write('Thing:' + thing + '\n')
                     for item2 in temp_av_pairs:
                         item2 = item2.strip()
-                        splt2 = item2.split('=')
-                        if len(splt2) > 1:
-                            if splt[0] == splt2[0].strip():
-                                want_tac_pairs = True
-                                #DEBUG
-                                #log_file.write("Replacing pairs %s=%s\n" %
-                                #               (splt2[0].strip(),
-                                #                splt2[1].strip()))
-                                return_pairs[i] = ('%s=%s' % (splt2[0].strip(),
-                                                             splt2[1].strip()))
+                        if item2.find(',') > -1: 
+                            splt2 = item2.split(',')
+                            if len(splt2) > 1:
+                                #splt3 = splt2[0].split('=')
+                                if splt[0].find(splt2[0]) > -1:
+                                    want_tac_pairs = True
+                                    return_pairs[i] = ('%s' % splt2[1])
+                        else:
+                            splt2 = item2.split('=')
+                            if len(splt2) > 1:
+                                if splt[0] == splt2[0].strip(): # strip needed?
+                                    want_tac_pairs = True
+                                    #DEBUG
+                                    #log_file.write("Replacing pairs %s=%s\n" %
+                                    #               (splt2[0].strip(),
+                                    #                splt2[1].strip()))
+                                    return_pairs[i] = ('%s=%s' % (splt2[0].strip(),
+                                                                 splt2[1].strip()))
                 i = i + 1
 
         # The previous 4 statements are to deny, it we passed them, proceed
@@ -398,27 +478,35 @@ def main():
         # Yes, simply printing them is how you return them
 
         # First, let's make sure we're doing service = shell.  If not, just
-        # allow it.  I currently have no knowledge of cmd's sent by other
-        # services.
+        # allow it.  I currently have little knowledge of cmd's sent by other
+        # services which is why this code is a little klugy. 
         if return_pairs:
             splt = av_pairs[0].split('=') # Removed service in return_pairs
             if len(splt) > 1:
-                if not splt[1].strip() == 'shell':
+                if not splt[1].strip() == 'shell': 
                     log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                          + "User '%s' granted non-shell access to device '%s' in group '%s' from '%s'\n"
                          % (user_name, device, this_group, ip_addr))
                     return_pairs = av_pairs[2:] # Cut the first two?
-                    #DEBUG
                     for item in return_pairs:
-                    #    log_file.write("Returning:%s\n" % item.strip())
+                        #DEBUG
+                        # log_file.write("Returning:%s\n" % item.strip())
                         print item.strip('\n')
                     if want_tac_pairs:
+                        #DEBUG
+                        # log_file.write("Exiting status 2\n")
                         sys.exit(2)
                     else:
+                        #DEBUG
+                        # log_file.write("Exiting status 0\n")
                         sys.exit(0) # Don't even TRY to mess with the tac pairs
         #Proceed with shell stuff
         if not len(the_command) > 0:
+            #DEBUG
+            # log_file.write("not len(the_command) > 0\n")
             for item in return_pairs:
+                #DEBUG
+                # log_file.write("Returning:%s\n" % item.strip())
                 print item.strip('\n')
             log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                  + "User '%s' granted access to device '%s' in group '%s' from '%s'\n"
@@ -443,7 +531,7 @@ def main():
                     log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                         + "User '%s' not allowed command '%s' to device '%s' in any group\n"
                          % (user_name, the_command, device))
-                    #Hum... this only works if it's the last group/only group.  
+                    #Can't... remember why I added this given the implicit deny  
                     sys.exit(1)
                 else:
                     continue
