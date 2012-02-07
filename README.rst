@@ -5,6 +5,11 @@ do_auth.py
 Versions
 ========
 
+1.92
+----
+
++ Catch exception on failed config.read() for backwards-compatibility w/ Python 2.4.
+
 1.91
 ----
 

@@ -43,6 +43,9 @@
 # Error out on no "default service = permit"
 # Option to hard code return value (for Procurve)
 
+# Version 1.92
+# Catch exception on failed config.read() for backwards-compat. w/ Python 2.4
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -399,12 +402,16 @@ tac_plus.conf?\n')
         log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                 + "Error: No username entered!\n")
         sys.exit(1)
+
     config = ConfigParser.SafeConfigParser()
-    if not (filename in config.read(filename)):
+    try:
+        config.read(filename)
+    except ConfigParser.ParsingError:
         log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                 + "Error: Can't open/parse '%s'\n" 
                  % (filename))
         sys.exit(1)
+
     the_section = "users"
 
 # If the user doesn't exist, just use the default settings
