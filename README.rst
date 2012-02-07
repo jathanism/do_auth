@@ -5,6 +5,12 @@ do_auth.py
 Versions
 ========
 
+1.91
+----
+
++ Error out on no "default service = permit"
++ Option to hard code return value (for Procurve)
+
 1.9
 ---
 
