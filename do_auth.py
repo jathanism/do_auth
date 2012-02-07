@@ -1,8 +1,7 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 # Program I threw together to do the things tac_plus won't
-# It allows very granular control. Please visit tacacs.org as
-# this is continually updated
+# It allows very granular control. For more info/update see tacacs.org
 
 # History:
 # Version 1.1
@@ -40,6 +39,10 @@
 # Only send roles to Nexus
 # Better av pair replacement
 
+# Version 1.91
+# Error out on no "default service = permit"
+# Option to hard code return value (for Procurve)
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -47,7 +50,7 @@
 
 '''
 do_auth.py [-options]
-Version 1.9
+Version 1.91
 do_auth is a python program I wrote to work as an authorization script for 
 tacacs to allow greater flexability in tacacs authentication.  It allows
 a user to be part of many predefined groups that can allow different
@@ -80,7 +83,8 @@ device_deny Deny any device with this IP.  Optional.
 device_permit   Allow this range.  Mandatory if -d is specified
 command_deny    Deny these commands.  Optional.
 command_permit  Allow these commands.  Mandatory.
-av_pairs    list of av pairs to replace if found. Optional - be careful 
+av_pairs    List of av pairs to replace if found. Advanced - use with care 
+exit_val    hard code return value.  Advanced - use with care
 
 The options are parsed in order till a match is found.  Obviously, 
 for login, the commands section is not parsed.  If a match is not
@@ -120,14 +124,14 @@ Example tacacs line: after authorization "/usr/bin/python
 
 Example av_pair:
 The following example will replace any priv-lvl with priv-lvl=1 ONLY if passed.
-Think of "av_pairs" as a find/replace function.
+Think of it as a find/replace function.
 
 av_pairs =
     priv-lvl=1
 
 Brocade has a brocade-privlvl which I like.  It maps priv-lvl to 
-brocade-privlvl, but priv-lvl=1 results in interface privileges.  Here
-is an example of how to map to brocade-privlvl=5 which has no modification
+brocade-privlvl, but the result is an account that has some privileges.  Here
+is an example of how to map brocade-privlvl = 5 which has no modification
 rights.  Unfortunately, it does require you to put in the IP's of your gear.
 The following group would go before other groups:
 
@@ -142,21 +146,12 @@ av_pairs =
     priv-lvl,brocade-privlvl=5
 
 You could also put "priv-lvl=15,brocade-privlvl=5" or whatever your
-tac_plus deamon is passing; as long as it's a match it accomplished the same
+tac_plus deamon is passing; as long as it's match it accomplished the same
 thing.  In this example, we essentially replace the whole av_pair resulting 
-in the user having only read access.  Alternatively, a good "disable account"
-can be created by simpley doing:
-
-av_pairs =
-    brocade-privlvl=5
-
-This results in the brocades having read/only, and the Cisco's go into disable
-because they don't understand it.  (We're assuming that the user has no enable
-account or the priv-lvl is pointless)  You could also add a shell role for nexus,
-which we will discuss next.  (shell:roles="network-admin")  
+in the user having only read access.
 
 NEXUS - Due to a slight change in the nexus, do_auth is able to 
-discern if a device is a nexus or not.  In tac_plus, do the following:
+tell if a device is a nexus or not.  In tac_plus, do the following:
 
         service = exec {
                 priv-lvl = 1 
@@ -168,27 +163,39 @@ discern if a device is a nexus or not.  In tac_plus, do the following:
 
 This configuration does NOT work without do_auth.  However, WITH do_auth, 
 do_auth will only send shell:roles to Nexus switches, allowing your
-other gear to work correctly.  Simply put av_pairs in your do_auth, and
-it will figure it out for you.  (If not, it won't touch them.   The logic is
-simple: If (av_pairs in .ini): Then (do_stuff), Else (exit(2)- Don't modify 'em!))
-
-Roles can also be modified in a do_auth group, as below:
+other gear to work correctly.  These roles can also be modified in a 
+do_auth group, as below:
 
 av_pairs = 
         priv-lvl=15
         shell:roles="network-admin"
 
-Also of note, you MUST USE DOUBLE QUOTES to get tac_plus to correctly
+Also of note, you MUST use double quotes to get tac_plus to correctly
 pass "network-operator" in the service example above.  UNLESS you are 
-modifying the key with do_auth in av_pairs - it will fix the quotes.
+modifying the key with do_auth in av_pairs - it will fix it for you. :-)
+
+PROCURVE - Worst tacacs implementation I've ever seen and, the whole
+reason for the exit_val.  Setting it to 0 works - doesn't like
+AUTHOR_STATUS_PASS_REPL.  Unfortunately, this means you need to define
+your procurves in a group and put them as the first group. 
+This is an incorrect implementation by procurve -NOT MY FAULT-
+
+[fix_procurve]
+host_allow =
+    .*
+device_permit =
+    192.168.1.*
+command_permit =
+    .*
+exit_val =
+    0
 
 BUGS: You must know your regular expressions.  If you enter a bad
 expression, such as *. instead of .*, python re will freak out and 
-not evaluate the expression. (Thought about netaddr, but would you
-really install it?)
+not evaluate the expression.  
 
-CAVEATS: One group can not take away what another group grants via deny.
-If a match is not found, it will go on to the next group.  If a deny is 
+CAVEATS: One group can not take away what another group grants.  If
+a match is not found, it will go on to the next group.  If a deny is 
 matched, it will go on to the next group.  
 Order is crucial - the groups should go from more specific to less 
 specific.  In the above example, if television_group was put before
@@ -208,7 +215,7 @@ WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 General Public License for more details.
 
-Written by Dan Schmidt - Please visit tacacs.org to check for updates.
+Written by Dan Schmidt
 '''
 
 import sys,re,getopt,ConfigParser
@@ -349,6 +356,14 @@ def main():
 # I don't use any other service other than shell to test!
     the_command = ""
     return_pairs = ""
+    if not len(av_pairs) > 0:
+        log_file.write('No av pairs!!\n')
+        if device:
+            log_file.write('Device:%s\n' % device)
+        log_file.write('Did you forget "default service = permit" in \
+tac_plus.conf?\n')
+        log_file.write('Confused - exiting(1)!\n')
+        sys.exit(1)
     if (av_pairs[0] == "service=shell\n"):  
         if av_pairs[1] == ("cmd=\n"): # #&*@ Nexus!
             if len(av_pairs) > 2:
@@ -472,6 +487,13 @@ def main():
                                     return_pairs[i] = ('%s=%s' % (splt2[0].strip(),
                                                                  splt2[1].strip()))
                 i = i + 1
+        # Some devices implent tacacs so poorly that you shouldn't even TRY to
+        # mess with them.  Like Procurves.
+        exit_val = '2' 
+        if config.has_option(this_group, "exit_val"):
+            return_val = get_attribute(config, this_group, "exit_val", log_file, filename)
+            return_val = return_val[0]  #more than 1 = they're stupid
+            exit_val= return_val.strip()
 
         # The previous 4 statements are to deny, it we passed them, proceed
         # If we are logging in, return pairs, if not, go no to check the command
@@ -494,8 +516,8 @@ def main():
                         print item.strip('\n')
                     if want_tac_pairs:
                         #DEBUG
-                        # log_file.write("Exiting status 2\n")
-                        sys.exit(2)
+                        #  log_file.write("Exiting status %s\n" % exit_val)
+                        sys.exit(int(exit_val))
                     else:
                         #DEBUG
                         # log_file.write("Exiting status 0\n")
@@ -511,7 +533,9 @@ def main():
             log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                  + "User '%s' granted access to device '%s' in group '%s' from '%s'\n"
                  % (user_name, device, this_group, ip_addr))
-            sys.exit(2)
+            #DEBUG
+            # log_file.write("Exiting status %s\n" % exit_val)
+            sys.exit(int(exit_val))
         else:   # Check command
             if match_it(this_group, "command_deny", the_command, config, log_file, filename):
                 if this_group == groups[-1]:
@@ -531,7 +555,7 @@ def main():
                     log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
                         + "User '%s' not allowed command '%s' to device '%s' in any group\n"
                          % (user_name, the_command, device))
-                    #Can't... remember why I added this given the implicit deny  
+                    #Hum... this only works if it's the last group/only group.  
                     sys.exit(1)
                 else:
                     continue
@@ -544,4 +568,3 @@ def main():
     sys.exit(1)
             
 if __name__ == "__main__":
-    main()
