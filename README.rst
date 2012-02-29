@@ -5,6 +5,16 @@ do_auth.py
 Versions
 ========
 
+1.93.1
+------
+
++ Replace all instances of log_file.write with a log object
++ Remove all references to log_file within the code
++ Read DEBUG environment variable to toggle debug logging
++ A few minor syntax cleanup changes to improve readability
++ A few minor line-spacing/formatting changes to improve readability
++ Extra commenting added here and there to improve readability
+
 1.92
 ----
 

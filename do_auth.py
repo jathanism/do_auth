@@ -46,6 +46,9 @@
 # Version 1.92
 # Catch exception on failed config.read() for backwards-compat. w/ Python 2.4
 
+# Version 1.93.1
+# Replace manual file logging w/ use of Python's logging module
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -53,7 +56,7 @@
 
 '''
 do_auth.py [-options]
-Version 1.91
+Version 1.93.1
 do_auth is a python program I wrote to work as an authorization script for 
 tacacs to allow greater flexability in tacacs authentication.  It allows
 a user to be part of many predefined groups that can allow different
@@ -221,84 +224,109 @@ General Public License for more details.
 Written by Dan Schmidt
 '''
 
-import sys,re,getopt,ConfigParser
+import ConfigParser
+import getopt
+import logging
+import os
+import sys
+import re
 from time import strftime
+
+# Defaults
+CONFIG = 'do_auth.ini'
+LOG_FILE = '/tmp/do_auth.log'
+LOG_FORMAT = "%(asctime)s [%(levelname)s]: %(message)s"
+DEBUG = os.getenv('DEBUG', False)
+
+# Setup basic file logger
+logging.basicConfig(
+    level=logging.INFO,
+    format=LOG_FORMAT,
+    filename=LOG_FILE
+)
+log = logging.getLogger(__name__)
+
+# Only display debug messages if we've set the DEBUG env variable or passed
+# opts.debug
+if DEBUG:
+    log.setLevel(logging.DEBUG)
 
 # I really don't want to deal with these exceptions more than once
 # filename is only used in log statements
-def get_attribute(config, the_section, the_option, log_file, filename):
+def get_attribute(config, the_section, the_option, filename):
+    """
+    Fetches a section by name from the config and returns a list of attributes.
+    """
+    log.debug('get_attributes(%s)' % locals())
     if not config.has_section(the_section):
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                 + "Error: Section '%s' does not exist in %s\n" 
-                 % (the_section, filename))
+        log.critical("Section '%s' does not exist in %s" % (the_section, filename))
         sys.exit(1)
     if not config.has_option(the_section, the_option):
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                 + "Error: Option '%s' does not exist in section %s in file %s\n" 
-                 % (the_option, the_section, filename))
+        log.critical("Option '%s' does not exist in section %s in file %s" % (the_option, the_section, filename))
         sys.exit(1)
-    #Should not have any exceptions - BUT, just in case
+
+    # Should not have any exceptions - BUT, just in case
     try:
         attributes = config.get(the_section, the_option)
     except ConfigParser.NoSectionError:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: Section '%s' Doesn't Exist!\n" 
-                % (the_section))
+        log.critical("Section '%s' Doesn't Exist!" % (the_section))
         sys.exit(1)
     except ConfigParser.DuplicateSectionError:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: Duplicate section '%s'\n" 
-                % (the_section))
+        log.critical("Duplicate section '%s'" % (the_section))
         sys.exit(1)
     except ConfigParser.NoOptionError:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                    + "Error: '%s' not found in section '%s\n'" 
-                     % (the_option, the_section))
+        log.critical("'%s' not found in section '%s'" % (the_option, the_section))
         sys.exit(1)
-    #To do: finish exceptions. 
+
+    # TODO (dan): Finish exceptions. 
     except ConfigParser.ParsingError:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: Can't parse file '%s'! (You got me)\n" 
-             % (filename))
+        log.critical("Can't parse file '%s'! (You got me)" % (filename))
         sys.exit(1)
-    attributes = attributes.split('\n')
-    #Strip empty lines
-    attributes2 = []
-    for line in attributes:
-        if line:
-            attributes2.append(line)
-    return attributes2
+
+    # This is only executed if no exceptions were thrown
+    else:
+        log.debug('attributes BEFORE = %r' % attributes)
+        attributes = attributes.splitlines()
+        log.debug('attributes AFTER = %r' % attributes)
+
+    # Strip empty lines
+    new_attributes = [line for line in attributes if line != '']
+    log.debug('new_attributes = %s' % new_attributes)
+    return new_attributes
 
 # Can't make it part of get_attribute... oh well...
 # We need someway to check to see if a username exists with out exit(1)
-def check_username(config, log_file, user_name):
+def check_username(config, user_name):
+    """
+    Check if a username exists in the config. Pukes if the config doesn't
+    even have a "users" section.
+    """
+    log.debug('check_username(%s)' % locals())
     if not config.has_section('users'):
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: users section doesn't exist!")
+        log.critical("users section doesn't exist!")
         sys.exit(1)
-    if config.has_option('users', user_name):
-        return True
-    else:
-        return False
 
-# If match item in our_list, true, else false
-# Example - if deny section has a match for 10.1.1.1, 
-# return True, else False
-# If the section doesn't exist, we assume an 
-# impicity deny/false
+    return config.has_option('users', user_name)
 
-def match_it(the_section, the_option, match_item, config, log_file, filename):
+def match_it(the_section, the_option, match_item, config, filename):
+    """
+    If match item in our_list, true, else false
+
+    Example:
+
+    If deny section has a match for 10.1.1.1, return True, else False.
+    If the section doesn't exist, we assume an implicit deny/false
+    """
     if config.has_option(the_section,the_option):
-        our_list = get_attribute(config, the_section, the_option, log_file, filename)
+        our_list = get_attribute(config, the_section, the_option, filename)
         for item in our_list:
-#p = re.compile(item) Not necessary - we're only using it once
-            if re.match(item,match_item):
+            if re.match(item, match_item):
                 return True
     return False
- 
+
 def main():
-    #Defaults
-    filename = "do_auth.ini"
+    # Defaults
+    filename = CONFIG
     log_name = "log.txt"
     user_name = ""
     ip_addr = ""
@@ -312,6 +340,7 @@ def main():
         print str(err) 
         print __doc__
         sys.exit(1)
+
     for (i, j) in optlist:
         if i == '-i':
             ip_addr = j
@@ -331,247 +360,295 @@ def main():
         else:
             print 'Unknown option:', i
             sys.exit(1)
+
     if len(argv) < 7:
         print __doc__
         sys.exit(1)
-    log_file = open (log_name, "a")
-#DEBUG!  We at least got CALLED
-#   log_file.write('Hello World!' + '\n')
-#read AV pairs
+
+    # DEBUG! We at least got CALLED
+    log.debug('Hello World!')
+
+    # Read AV pairs
     av_pairs = []
-    if not (is_debug):
+    if not is_debug:
         for line in sys.stdin:
             av_pairs.append(line)
+
+        log.debug('AV pairs: %r' % av_pairs)
+
     else:
-        #Default Debug command is "show users wide"
-        #Later versions will allow this to be set
+        # Default Debug command is "show users wide"
+        # Later versions will allow this to be set
         av_pairs.append("service=shell\n")
         av_pairs.append("cmd=show\n")
         av_pairs.append("cmd-arg=users\n")
         av_pairs.append("cmd-arg=wide\n")
         av_pairs.append("cmd-arg=<cr>\n")
-#DEBUG - print tac pairs
-#    for item in av_pairs:
-#        log_file.write(item)
 
-# Function to make cmd's readable
-# Not very good, but will do for now
-# I don't use any other service other than shell to test!
+    # DEBUG - print tac pairs
+    for item in av_pairs:
+        log.debug('AV item: %r' % item)
+
+    # Function to make cmd's readable
+    # Not very good, but will do for now
+    # I don't use any other service other than shell to test!
     the_command = ""
     return_pairs = ""
+
     if not len(av_pairs) > 0:
-        log_file.write('No av pairs!!\n')
+        log.info('No av pairs!!')
         if device:
-            log_file.write('Device:%s\n' % device)
-        log_file.write('Did you forget "default service = permit" in \
-tac_plus.conf?\n')
-        log_file.write('Confused - exiting(1)!\n')
+            log.info('Device:%s' % device)
+
+        log.critical('Did you forget "default service = permit" in tac_plus.conf?')
+        log.critical('Confused - exiting(1)!')
         sys.exit(1)
+
     if (av_pairs[0] == "service=shell\n"):  
+        # $**@ Nexus!
         if av_pairs[1] == ("cmd=\n"): # #&*@ Nexus!
             if len(av_pairs) > 2:
-                #DEBUG
-                # log_file.write('Nexus pairs found\n')
-                return_pairs = av_pairs[2:] #strip the "cmd=" for consistency
-#Commands - Concatenate to a readable command
+                # DEBUG
+                log.debug('Nexus pairs found')
+                return_pairs = av_pairs[2:] # strip the "cmd=" for consistency
+
+        #
+        # Commands - Concatenate to a readable command
+        #
         elif av_pairs[1].startswith("cmd="):
             our_command = av_pairs[1].split("=")
             the_command = our_command[1].strip('\n')
+
             if len(av_pairs) > 2:
                 i = 2
                 our_command = av_pairs[i].split("=")
+
                 while not (our_command[1] == "<cr>\n"):
                     the_command = the_command + " " + our_command[1].strip('\n')
                     i = i + 1
                     if i == len(av_pairs): # Firewalls don't give a <cr>!!
                         break
+
                     our_command = av_pairs[i].split("=")
-            #DEBUG - We got the command
-            #log_file.write(the_command + '\n')
-#Login - Get av_pairs to pass back to tac_plus
-        elif av_pairs[1].startswith("cmd*"):  #Anybody know why it's "cmd*"?
+
+            # DEBUG - We got the command
+            log.debug('Got command: %r' % the_command)
+
+        #
+        # Login - Get av_pairs to pass back to tac_plus
+        #
+
+        # (Note: during debugging, you may see AV pairs whose separator
+        # character is a * instead of a = sign, meaning that the value in a pair
+        # is optional. An = sign indicates a mandatory value. A * denotes an
+        # optional value).
+        elif av_pairs[1].startswith("cmd*"):  # Anybody know why it's "cmd*"?
             if len(av_pairs) > 2:
-                return_pairs = av_pairs[2:] #You MUST strip the "cmd*" av-pair
-# Definately not a Nexus, so strip any nexus pair 
+                return_pairs = av_pairs[2:] # You MUST strip the "cmd*" av-pair
+
+            # Definitely not a Nexus, so strip any nexus pair 
             for item in return_pairs:
                 if item.startswith("shell:roles"):
                     return_pairs.remove(item)
     else:
          return_pairs = av_pairs
+
+    # Check if there isn't a valid username... These checks should happen first.
     if not user_name:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: No username entered!\n")
+        log.critical("No username entered!")
         sys.exit(1)
 
     config = ConfigParser.SafeConfigParser()
     try:
         config.read(filename)
     except ConfigParser.ParsingError:
-        log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                + "Error: Can't open/parse '%s'\n" 
-                 % (filename))
+        log.critical("Can't open/parse '%s'" % (filename))
         sys.exit(1)
+
+    log.debug('Got config: %s' % config)
 
     the_section = "users"
 
-# If the user doesn't exist, just use the default settings
-# Kind of a hack, but it works because we only get_attribute on user_name once.
-# We have the : in there which we can use to split if required
-    if not check_username(config, log_file, user_name):
+    # If the user doesn't exist, just use the default settings
+    # Kind of a hack, but it works because we only get_attribute on user_name once.
+    # We have the : in there which we can use to split if required
+    log.debug('Checking username: %s' % user_name)
+    if not check_username(config, user_name):
+        log.debug('username fail')
         user_name = (user_name + ":(default)")
-        groups = get_attribute(config, "users", "default", log_file, filename)
+        groups = get_attribute(config, "users", "default", filename)
     else:
-        groups = get_attribute(config, "users", user_name, log_file, filename)
+        log.debug('username pass')
+        groups = get_attribute(config, "users", user_name, filename)
     
+    log.debug('About to check groups')
     for this_group in groups:
+        # Check $ip_addr
         if ip_addr:
-            if match_it(this_group, "host_deny", ip_addr, config, log_file, filename):
+            # 'host_deny' attribute
+            if match_it(this_group, "host_deny", ip_addr, config, filename):
                 if this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                        + "User '%s' denied from source '%s' in '%s'->'%s'\n"
-                         % (user_name, ip_addr, this_group, "host_deny"))
+                    log.info("User '%s' denied from source '%s' in '%s'->'%s'"
+                             % (user_name, ip_addr, this_group, "host_deny"))
                     sys.exit(1)
                 else:
-                # HUM... afterthought.  We need it to continue if more groups exist
+                    # HUM... afterthought.  We need it to continue if more groups exist
                     continue
-            if not match_it(this_group, "host_allow", ip_addr, config, log_file, filename):
-                #Stupid IOS-XR
+
+            # 'host_allow' attribute
+            if not match_it(this_group, "host_allow", ip_addr, config, filename):
+                # Stupid IOS-XR
                 if ip_addr == "-fix_crs_bug":
                     pass
                 elif this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                        + "User '%s' not allowed from source '%s' in '%s'->'%s'\n"
-                         % (user_name, ip_addr, this_group, "host_allow"))
+                    log.info("User '%s' not allowed from source '%s' in '%s'->'%s'"
+                             % (user_name, ip_addr, this_group, "host_allow"))
                     sys.exit(1)
                 else:
                     continue
+
+        # Check $device
         if device:
-            if match_it(this_group, "device_deny", device, config, log_file, filename):
+            # 'device_deny' attribute
+            if match_it(this_group, "device_deny", device, config, filename):
                 if this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                        + "User '%s' denied access to device '%s' in '%s'->'%s'\n"
-                         % (user_name, device, this_group, "device_deny"))
+                    log.info("User '%s' denied access to device '%s' in '%s'->'%s'"
+                             % (user_name, device, this_group, "device_deny"))
                     sys.exit(1)
                 else:
                     continue
-            if not match_it(this_group, "device_permit", device, config, log_file, filename):
+
+            # 'device_permit' attribute
+            if not match_it(this_group, "device_permit", device, config, filename):
                 if this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                         + "User '%s' not allowed access to device '%s' in '%s'->'%s'\n"
-                         % (user_name, device, this_group, "device_permit"))
+                    log.info("User '%s' not allowed access to device '%s' in '%s'->'%s'"
+                             % (user_name, device, this_group, "device_permit"))
                     sys.exit(1)
                 else:
                     continue
+
         # Attempt to modify return pairs
         want_tac_pairs = False
         if config.has_option(this_group, "av_pairs"):
-            temp_av_pairs = get_attribute(config, this_group, "av_pairs", log_file, filename)
-            i = 0
-            for item in return_pairs:
-                splt = item.split('=')
+            temp_av_pairs = get_attribute(config, this_group, "av_pairs", filename)
+
+            for idx, item in enumerate(return_pairs):
+                # TODO (jathan): Turn av_pairs into a dict, not a list of
+                # strings... Write a function to convert back and forth. We
+                # also need to be able to account for optional pairs that may
+                # be sent by the device ('*' delimited)
+                splt = item.split('=') 
                 if len(splt) > 1:
-                    #DEBUG
-                    #for thing in splt:
-                    #    log_file.write('Thing:' + thing + '\n')
+                    # DEBUG
+                    for thing in splt:
+                        log.debug('Thing: %s' % thing)
+
+                    # TODO (jathan): item, splt, item2?  Need better var names...
                     for item2 in temp_av_pairs:
                         item2 = item2.strip()
+                        
+                        # Pair replacing logic.
                         if item2.find(',') > -1: 
                             splt2 = item2.split(',')
                             if len(splt2) > 1:
                                 #splt3 = splt2[0].split('=')
                                 if splt[0].find(splt2[0]) > -1:
                                     want_tac_pairs = True
-                                    return_pairs[i] = ('%s' % splt2[1])
+                                    return_pairs[idx] = ('%s' % splt2[1])
                         else:
                             splt2 = item2.split('=')
                             if len(splt2) > 1:
-                                if splt[0] == splt2[0].strip(): # strip needed?
+                                if splt[0] == splt2[0].strip(): # Strip needed?
                                     want_tac_pairs = True
-                                    #DEBUG
-                                    #log_file.write("Replacing pairs %s=%s\n" %
-                                    #               (splt2[0].strip(),
-                                    #                splt2[1].strip()))
-                                    return_pairs[i] = ('%s=%s' % (splt2[0].strip(),
-                                                                 splt2[1].strip()))
-                i = i + 1
-        # Some devices implent tacacs so poorly that you shouldn't even TRY to
-        # mess with them.  Like Procurves.
+                                    # DEBUG
+                                    pair = '%s=%s' % (splt2[0].strip(), splt2[1].strip())
+                                    log.debug("Replacing pairs %s" % pair)
+                                    return_pairs[idx] = pair
+
+        # Some devices implent TACACS+ so poorly that you shouldn't even TRY to
+        # mess with them. Like Procurves.
         exit_val = '2' 
         if config.has_option(this_group, "exit_val"):
-            return_val = get_attribute(config, this_group, "exit_val", log_file, filename)
-            return_val = return_val[0]  #more than 1 = they're stupid
-            exit_val= return_val.strip()
+            return_val = get_attribute(config, this_group, "exit_val", filename)
+            return_val = return_val[0]  # more than 1 = they're stupid
+            exit_val = return_val.strip()
 
         # The previous 4 statements are to deny, it we passed them, proceed
         # If we are logging in, return pairs, if not, go no to check the command
         # Yes, simply printing them is how you return them
 
-        # First, let's make sure we're doing service = shell.  If not, just
-        # allow it.  I currently have little knowledge of cmd's sent by other
-        # services which is why this code is a little klugy. 
+        # First, let's make sure we're doing 'service = shell'. If not, just
+        # allow it. I currently have little knowledge of cmd's sent by other
+        # services which is why this code is a little kludgy. 
         if return_pairs:
             splt = av_pairs[0].split('=') # Removed service in return_pairs
+
             if len(splt) > 1:
                 if not splt[1].strip() == 'shell': 
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                         + "User '%s' granted non-shell access to device '%s' in group '%s' from '%s'\n"
-                         % (user_name, device, this_group, ip_addr))
+                    log.info("User '%s' granted non-shell access to device '%s' in group '%s' from '%s'"
+                             % (user_name, device, this_group, ip_addr))
                     return_pairs = av_pairs[2:] # Cut the first two?
+
+                    # DEBUG
                     for item in return_pairs:
-                        #DEBUG
-                        # log_file.write("Returning:%s\n" % item.strip())
+                        log.debug("Returning: %s" % item.strip())
                         print item.strip('\n')
+
                     if want_tac_pairs:
-                        #DEBUG
-                        #  log_file.write("Exiting status %s\n" % exit_val)
+                        log.debug("Exiting status %s" % exit_val)
                         sys.exit(int(exit_val))
                     else:
-                        #DEBUG
-                        # log_file.write("Exiting status 0\n")
+                        log.debug("Exiting status 0")
                         sys.exit(0) # Don't even TRY to mess with the tac pairs
-        #Proceed with shell stuff
+
+        # Proceed with shell stuff
         if not len(the_command) > 0:
-            #DEBUG
-            # log_file.write("not len(the_command) > 0\n")
+            log.debug("not len(the_command) > 0")
+
             for item in return_pairs:
-                #DEBUG
-                # log_file.write("Returning:%s\n" % item.strip())
+                # DEBUG
+                log.debug("Returning: %s" % item.strip())
                 print item.strip('\n')
-            log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                 + "User '%s' granted access to device '%s' in group '%s' from '%s'\n"
-                 % (user_name, device, this_group, ip_addr))
-            #DEBUG
-            # log_file.write("Exiting status %s\n" % exit_val)
+
+            log.info("User '%s' granted access to device '%s' in group '%s' from '%s'"
+                     % (user_name, device, this_group, ip_addr))
+            # DEBUG
+            log.debug("Exiting status %s" % exit_val)
             sys.exit(int(exit_val))
-        else:   # Check command
-            if match_it(this_group, "command_deny", the_command, config, log_file, filename):
+
+        # Check command
+        else:
+            if match_it(this_group, "command_deny", the_command, config, filename):
+
                 if this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                        + "User '%s' denied command '%s' to device '%s' in '%s'->'%s'\n"
-                         % (user_name, the_command, device, this_group, "command_deny"))
+                    log.info("User '%s' denied command '%s' to device '%s' in '%s'->'%s'"
+                             % (user_name, the_command, device, this_group, "command_deny"))
                     sys.exit(1)
+
                 else:
                     continue
-            elif match_it(this_group, "command_permit", the_command, config, log_file, filename):
-                log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                    + "User '%s' allowed command '%s' to device '%s' in '%s'->'%s'\n"
-                     % (user_name, the_command, device, this_group, "command_permit"))
+
+            elif match_it(this_group, "command_permit", the_command, config, filename):
+                log.info("User '%s' allowed command '%s' to device '%s' in '%s'->'%s'"
+                         % (user_name, the_command, device, this_group, "command_permit"))
                 sys.exit(0)
-            else:   #exit & log if last group
+
+            # Exit & log if last group
+            else:
+
                 if this_group == groups[-1]:
-                    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-                        + "User '%s' not allowed command '%s' to device '%s' in any group\n"
-                         % (user_name, the_command, device))
-                    #Hum... this only works if it's the last group/only group.  
+                    log.info("User '%s' not allowed command '%s' to device '%s' in any group"
+                             % (user_name, the_command, device))
+
+                    #Hum... This only works if it's the last group/only group.  
                     sys.exit(1)
+
                 else:
                     continue
 
-
-    #implicit deny at the end
-    log_file.write(strftime("%Y-%m-%d %H:%M:%S: ")
-        + "User '%s' not allowed access to device '%s' from '%s' in any group\n"
-         % (user_name, device, ip_addr))
+    # Implicit deny at the end
+    log.info("User '%s' not allowed access to device '%s' from '%s' in any group"
+             % (user_name, device, ip_addr))
     sys.exit(1)
             
 if __name__ == "__main__":
