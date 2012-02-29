@@ -49,6 +49,9 @@
 # Version 1.93.1
 # Replace manual file logging w/ use of Python's logging module
 
+# Version 1.93.2
+# Default log destination to /dev/null unless -l is passed.
+
 # TO DO (If anybody bothers to request them)
 # Possible web front end - simple cgi shouldn't be too hard to write
 # More work on tac_pairs - sniff wlc traffic
@@ -234,28 +237,36 @@ from time import strftime
 
 # Defaults
 CONFIG = 'do_auth.ini'
-LOG_FILE = '/tmp/do_auth.log'
+LOG_FILE = '/dev/null'
+LOG_LEVEL = logging.INFO
 LOG_FORMAT = "%(asctime)s [%(levelname)s]: %(message)s"
 DEBUG = os.getenv('DEBUG', False)
 
-# Setup basic file logger
-logging.basicConfig(
-    level=logging.INFO,
-    format=LOG_FORMAT,
-    filename=LOG_FILE
-)
-log = logging.getLogger(__name__)
+# Placeholder for global logging object
+log = None
 
-# Only display debug messages if we've set the DEBUG env variable or passed
-# opts.debug
+# Only display debug messages if we've set the DEBUG env variable
 if DEBUG:
-    log.setLevel(logging.DEBUG)
+    LOG_LEVEL = logging.DEBUG
 
-# I really don't want to deal with these exceptions more than once
-# filename is only used in log statements
+
+# Functions
+def _setup_logging(filename=LOG_FILE, format=LOG_FORMAT, level=LOG_LEVEL):
+    """Returns a logging object. Intended to be called by main before any
+    logging occurs."""
+    logging.basicConfig(
+        level=level,
+        format=format,
+        filename=filename
+    )
+    return logging.getLogger(__name__)
+
 def get_attribute(config, the_section, the_option, filename):
     """
     Fetches a section by name from the config and returns a list of attributes.
+
+    I really don't want to deal with these exceptions more than once filename
+    is only used in log statements.
     """
     log.debug('get_attributes(%s)' % locals())
     if not config.has_section(the_section):
@@ -326,8 +337,9 @@ def match_it(the_section, the_option, match_item, config, filename):
 
 def main():
     # Defaults
+    global log # So we can use and modify the global logging object
     filename = CONFIG
-    log_name = "log.txt"
+    log_name = LOG_FILE
     user_name = ""
     ip_addr = ""
     device = ""
@@ -361,11 +373,18 @@ def main():
             print 'Unknown option:', i
             sys.exit(1)
 
+    # DEBUG before we have a logging object.
+    #print('filename: %r' % filename )
+    #print('log_name: %r' % log_name )
+
     if len(argv) < 7:
         print __doc__
         sys.exit(1)
 
-    # DEBUG! We at least got CALLED
+    # Define our logging object
+    log = _setup_logging(filename=log_name)
+
+    # DEBUG! We at least got CALLED (and the logger works!)
     log.debug('Hello World!')
 
     # Read AV pairs
@@ -474,11 +493,11 @@ def main():
     # We have the : in there which we can use to split if required
     log.debug('Checking username: %s' % user_name)
     if not check_username(config, user_name):
-        log.debug('username fail')
+        log.debug('username not found; searching for default')
         user_name = (user_name + ":(default)")
         groups = get_attribute(config, "users", "default", filename)
     else:
-        log.debug('username pass')
+        log.debug('username found in config')
         groups = get_attribute(config, "users", user_name, filename)
     
     log.debug('About to check groups')
@@ -565,7 +584,7 @@ def main():
                                     log.debug("Replacing pairs %s" % pair)
                                     return_pairs[idx] = pair
 
-        # Some devices implent TACACS+ so poorly that you shouldn't even TRY to
+        # Some devices implement TACACS+ so poorly that you shouldn't even TRY to
         # mess with them. Like Procurves.
         exit_val = '2' 
         if config.has_option(this_group, "exit_val"):
@@ -646,7 +665,8 @@ def main():
                 else:
                     continue
 
-    # Implicit deny at the end
+    # Implicit deny at the end. This should never happen, but in case it ever
+    # does, it's not failing silently and you will know! :)
     log.info("User '%s' not allowed access to device '%s' from '%s' in any group"
              % (user_name, device, ip_addr))
     sys.exit(1)

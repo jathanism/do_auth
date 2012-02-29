@@ -5,6 +5,11 @@ do_auth.py
 Versions
 ========
 
+1.93.2
+------
+
++ Default log destination to /dev/null unless -l is passed.
+
 1.93.1
 ------
 
