@@ -58,7 +58,7 @@ http://pastie.org/506002
 Usage
 =====
 
-Easier TACACS Configurations with do_auth
+Easier TACACS Configurations with do_auth:
 
 http://tacacs.org/2009/09/26/easy-tacacs-control-with-do_auth/
 
@@ -69,9 +69,7 @@ Example line to put in tacplus user or group::
 tac_plus.conf
 -------------
 
-First, a starting tacplus.conf file. Which, we’ll never have to edit again::
-
-
+First, a starting ``tac_plus.conf`` file. Which, we’ll never have to edit again::
 
     # My simple tacplus config that never needs to change
     key = mykey
@@ -100,10 +98,10 @@ First, a starting tacplus.conf file. Which, we’ll never have to edit again::
 do_auth.ini
 -----------
 
-Now, we add homer and give him access to some show commands. Fist, we do a
-adduser homer on linux to add the user. This way, when the user wants to change
-is password, he can any time he wants to with passwd. Next, we edit the
-do_auth.ini file::
+Now, we add homer and give him access to some show commands. First, we do a
+``adduser homer`` on Linux to add the user. This way, when the user wants to
+change is password, he can any time he wants to with ``passwd``. Next, we edit
+the ``do_auth.ini`` file::
 
     [users]
     homer =
@@ -120,7 +118,6 @@ do_auth.ini file::
         show ip int.* 
         show controllers.*
 
-
 To add an admin user it's even easier::
 
     admin = 
@@ -133,7 +130,6 @@ To add an admin user it's even easier::
         .* 
     command_permit = 
         .*
-
 
 So our final config is::
 
@@ -161,7 +157,6 @@ So our final config is::
         .* 
     command_permit = 
         .*
-
 
 Wouldn’t it be nice to just do an adduser and be done without any config
 modification? All we need is a default user. In our example above we would
@@ -210,7 +205,6 @@ follows::
     command_permit = 
         show.*
 
-
 Custom AV Pairs
 ---------------
 
@@ -221,9 +215,9 @@ enable access to. Simply add this to the group::
     av_pairs =
         priv-lvl=1
 
-This assumes you have priv-lvl in your tac_plus.conf. (Like examples previous)
-Note, of course, you’ll also need to add a command_deny for enable or they’ll
-just type ‘en’ if they have an enable password. Now, this should open all sorts
+This assumes you have ``priv-lvl`` in your ``tac_plus.conf``. (Like examples previous)
+Note, of course, you’ll also need to add a ``command_deny`` for enable or they’ll
+just type "en" if they have an enable password. Now, this should open all sorts
 of opportunities for wlc and roles. For reasons unknown, this does not work. If
 you have a wlc that you can lab up & wireshark, please contact me on the
 tac_plus listserv.
