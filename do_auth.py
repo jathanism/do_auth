@@ -245,15 +245,22 @@ __license__ = 'GPL-3.0'
 __version__ = '1.10'
 
 try:
-	import configparser
+        import configparser
 except ImportError:
-	import ConfigParser as configparser
+        import ConfigParser as configparser
 import logging
 import optparse
 import os
 import sys
 import re
 from time import strftime
+try:
+        from os import getgrouplist as os_getgrouplist
+        got_getgrouplist = True
+        from pwd import getpwnam as pwd_getpwnam
+        from grp import getgrgid as grp_getgrgid
+except ImportError:
+        got_getgrouplist = False
 
 # Defaults
 CONFIG = 'do_auth.ini'
@@ -622,6 +629,22 @@ def main():
     else:
         log.debug('username found in config')
         groups = get_attribute(config, "users", user_name, filename)
+
+    if '_nss' in groups and got_getgrouplist:
+        log.debug('Got special group _nss and have getgrouplist, importing nss groups')
+        try:
+                pwd_user = pwd_getpwnam(user_name)
+                os_group = os_getgrouplist(user_name, pwd_user[3])
+                for gid in os_group:
+                        try:
+                                group = grp_getgrgid(gid)
+                                groups.append(group[0])
+                        except KeyError:
+                                # group not found in nss
+                                pass
+        except KeyError:
+                log.debug('User not found in NSS')
+        log.debug('NSS Groups: %s' % (groups)) 
 
     log.debug('About to check groups')
     for this_group in groups:
