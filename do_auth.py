@@ -246,7 +246,7 @@ __version__ = '1.10'
 
 try:
 	import configparser
-except:
+except ImportError:
 	import ConfigParser as configparser
 import logging
 import optparse
