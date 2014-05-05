@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# vim: ts=4:sw=4:expandtab
 
 """
 do_auth is a Python program to work as an authorization script for the
@@ -245,9 +246,9 @@ __license__ = 'GPL-3.0'
 __version__ = '1.10'
 
 try:
-        import configparser
+    import configparser
 except ImportError:
-        import ConfigParser as configparser
+    import ConfigParser as configparser
 import logging
 import optparse
 import os
@@ -255,12 +256,12 @@ import sys
 import re
 from time import strftime
 try:
-        from os import getgrouplist as os_getgrouplist
-        got_getgrouplist = True
-        from pwd import getpwnam as pwd_getpwnam
-        from grp import getgrgid as grp_getgrgid
+    from os import getgrouplist as os_getgrouplist
+    got_getgrouplist = True
+    from pwd import getpwnam as pwd_getpwnam
+    from grp import getgrgid as grp_getgrgid
 except ImportError:
-        got_getgrouplist = False
+    got_getgrouplist = False
 
 # Defaults
 CONFIG = 'do_auth.ini'
@@ -296,7 +297,7 @@ def dprint(*args, **kwargs):
         for k,v in kwargs.items():
             print('%s = %s' % (k.upper(), v))
         if args and kwargs:
-            print()
+            print('')
 
 def _product(*args, **kwds):
     """
