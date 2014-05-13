@@ -243,7 +243,7 @@ __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
 __license__ = 'GPL-3.0'
-__version__ = '1.10'
+__version__ = '1.11'
 
 try:
     import configparser
