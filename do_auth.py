@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# vim: ts=4:sw=4:expandtab
 
 """
 do_auth is a Python program to work as an authorization script for the
@@ -242,15 +243,25 @@ __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
 __license__ = 'GPL-3.0'
-__version__ = '1.10'
+__version__ = '1.11'
 
-import ConfigParser
+try:
+    import configparser
+except ImportError:
+    import ConfigParser as configparser
 import logging
 import optparse
 import os
 import sys
 import re
 from time import strftime
+try:
+    from os import getgrouplist as os_getgrouplist
+    got_getgrouplist = True
+    from pwd import getpwnam as pwd_getpwnam
+    from grp import getgrgid as grp_getgrgid
+except ImportError:
+    got_getgrouplist = False
 
 # Defaults
 CONFIG = 'do_auth.ini'
@@ -282,11 +293,11 @@ def dprint(*args, **kwargs):
     """Pretty-print the passed in values if global ``DEBUG`` is set."""
     if DEBUG:
         for a in args:
-            print a
-        for k,v in kwargs.iteritems():
-            print '%s = %s' % (k.upper(), v)
+            print(a)
+        for k,v in kwargs.items():
+            print('%s = %s' % (k.upper(), v))
         if args and kwargs:
-            print
+            print('')
 
 def _product(*args, **kwds):
     """
@@ -296,7 +307,7 @@ def _product(*args, **kwds):
     product('ABCD', 'xy') --> Ax Ay Bx By Cx Cy Dx Dy
     product(range(2), repeat=3) --> 000 001 010 011 100 101 110 111
     """
-    pools = map(tuple, args) * kwds.get('repeat', 1)
+    pools = list(map(tuple, args)) * kwds.get('repeat', 1)
     result = [[]]
     for pool in pools:
         result = [x+[y] for x in result for y in pool]
@@ -327,18 +338,18 @@ def get_attribute(config, the_section, the_option, filename):
     # Should not have any exceptions - BUT, just in case
     try:
         attributes = config.get(the_section, the_option)
-    except ConfigParser.NoSectionError:
+    except configparser.NoSectionError:
         log.critical("Section '%s' Doesn't Exist!" % (the_section))
         sys.exit(1)
-    except ConfigParser.DuplicateSectionError:
+    except configparser.DuplicateSectionError:
         log.critical("Duplicate section '%s'" % (the_section))
         sys.exit(1)
-    except ConfigParser.NoOptionError:
+    except configparser.NoOptionError:
         log.critical("'%s' not found in section '%s'" % (the_option, the_section))
         sys.exit(1)
 
     # TODO (dan): Finish exceptions.
-    except ConfigParser.ParsingError:
+    except configparser.ParsingError:
         log.critical("Can't parse file '%s'! (You got me)" % (filename))
         sys.exit(1)
 
@@ -394,7 +405,7 @@ class DoAuthOptionParser(optparse.OptionParser):
         """Print a usage message using 'msg' to stderr and exit 1."""
         # Use the global log if it exists, else instantiate it.
         global log
-        print log
+        print(log)
         if log is None:
             log = _setup_logging(filename=self.values.log_file)
         log.critical(msg)
@@ -503,8 +514,8 @@ def main():
 
     # DEBUG before we have a logging object.
     if is_debug:
-        print 'filename: %r' % filename
-        print 'log_name: %r' % log_name
+        print('filename: %r' % filename)
+        print('log_name: %r' % log_name)
 
     # Define our logging object
     log = _setup_logging(filename=log_name)
@@ -597,10 +608,10 @@ def main():
     else:
          return_pairs = av_pairs
 
-    config = ConfigParser.SafeConfigParser()
+    config = configparser.SafeConfigParser()
     try:
         config.readfp(open(filename))
-    except (IOError, ConfigParser.ParsingError):
+    except (IOError, configparser.ParsingError):
         log.critical("Can't open/parse config file: '%s'" % (filename))
         sys.exit(1)
 
@@ -619,6 +630,22 @@ def main():
     else:
         log.debug('username found in config')
         groups = get_attribute(config, "users", user_name, filename)
+
+    if '_nss' in groups and got_getgrouplist:
+        log.debug('Got special group _nss and have getgrouplist, importing nss groups')
+        try:
+                pwd_user = pwd_getpwnam(user_name)
+                os_group = os_getgrouplist(user_name, pwd_user[3])
+                for gid in os_group:
+                        try:
+                                group = grp_getgrgid(gid)
+                                groups.append(group[0])
+                        except KeyError:
+                                # group not found in nss
+                                pass
+        except KeyError:
+                log.debug('User not found in NSS')
+        log.debug('NSS Groups: %s' % (groups)) 
 
     log.debug('About to check groups')
     for this_group in groups:
@@ -733,7 +760,7 @@ def main():
                     # DEBUG
                     for item in return_pairs:
                         log.debug("Returning: %s" % item.strip())
-                        print item.strip('\n')
+                        print(item.strip('\n'))
 
                     if want_tac_pairs:
                         log.debug("Exiting status %s" % exit_val)
@@ -749,7 +776,7 @@ def main():
             for item in return_pairs:
                 # DEBUG
                 log.debug("Returning: %s" % item.strip())
-                print item.strip('\n')
+                print(item.strip('\n'))
 
             log.info("User '%s' granted access to device '%s' in group '%s' from '%s'"
                      % (user_name, device, this_group, ip_addr))

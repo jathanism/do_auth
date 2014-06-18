@@ -4,6 +4,13 @@ Changelog
 
 The change history, in order from newest to oldest.
 
+1.11
+====
+
++ Python 3 compatibility.
++ NSS Group support. Add group ``_nss`` to your default user to get NSS groups
+  for users (Python 3 required).
+
 1.10
 ====
 
