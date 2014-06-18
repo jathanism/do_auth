@@ -4,6 +4,11 @@ Changelog
 
 The change history, in order from newest to oldest.
 
+1.14
+====
++ Added optional support for netaddr for specifying network address blocks
+  within do_auth.ini.
+
 1.13
 ====
 + Added support for parsing of "long pairs" sent by Cisco ASR devices.
