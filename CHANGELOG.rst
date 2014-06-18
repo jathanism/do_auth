@@ -4,6 +4,12 @@ Changelog
 
 The change history, in order from newest to oldest.
 
+1.12
+====
+
++ Added optional support for netaddr for specifying network address blocks
+  within do_auth.ini.
+
 1.11
 ====
 

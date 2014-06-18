@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: ts=4:sw=4:expandtab
 
 """
@@ -243,7 +244,7 @@ __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
 __license__ = 'GPL-3.0'
-__version__ = '1.11'
+__version__ = '1.12'
 
 try:
     import configparser
@@ -262,6 +263,10 @@ try:
     from grp import getgrgid as grp_getgrgid
 except ImportError:
     got_getgrouplist = False
+try:
+    import netaddr
+except ImportError:
+    netaddr = None
 
 # Defaults
 CONFIG = 'do_auth.ini'
@@ -378,6 +383,32 @@ def check_username(config, user_name):
 
     return config.has_option('users', user_name)
 
+def match_net(ip, net):
+    """
+    Return whether ``ip`` is in ``net``, except: log & exit(1)
+
+    :param ip:
+        A string representing an IP address
+
+    :param net:
+        A string reprsenting an IP network prefix (CIDR)
+    """
+    if netaddr is None:
+        log.critical("Can't use / without the netaddr egg!")
+        sys.exit(1)
+    try:
+        the_ip = netaddr.IPAddress(ip)
+    except (netaddr.AddrFormatError, ValueError) as err:
+        log.critical(err)
+        sys.exit(1)
+        # this really should not happen
+    try:
+        the_net = netaddr.IPNetwork(net)
+    except (netaddr.AddrFormatError, ValueError) as err:
+        log.critical(err)
+        sys.exit(1)
+    return the_ip in the_net
+
 def match_it(the_section, the_option, match_item, config, filename):
     """
     If match item in our_list, true, else false
@@ -390,7 +421,12 @@ def match_it(the_section, the_option, match_item, config, filename):
     if config.has_option(the_section,the_option):
         our_list = get_attribute(config, the_section, the_option, filename)
         for item in our_list:
-            if re.match(item, match_item):
+            # Brute force assuming that this is a network block
+            if item.find('/') > -1:
+                if match_net(match_item, item):
+                    return True
+            # Or treat it as a normal pattern match
+            elif re.match(item, match_item):
                 return True
     return False
 
