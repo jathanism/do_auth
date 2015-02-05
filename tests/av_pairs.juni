@@ -1,0 +1,7 @@
+service=junos-exec
+local-user-name=remote
+allow-commands=^.*
+allow-configuration=^.*
+deny-commands=
+deny-configuration=
+user-permissions=

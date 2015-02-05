@@ -1,0 +1,3 @@
+service=shell
+cmd*
+priv-lvl=1

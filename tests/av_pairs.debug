@@ -1,0 +1,5 @@
+service=shell
+cmd=show
+cmd-arg=users
+cmd-arg=wide
+cmd-arg=<cr>

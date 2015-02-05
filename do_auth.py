@@ -1,249 +1,23 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 # vim: ts=4:sw=4:expandtab
 
 """
-do_auth is a Python program to work as an authorization script for the
+do_auth is a Python program to work as an post-authorization script for the
 ``tac_plus`` TACACS+ daemon to allow greater flexibility in TACACS+
 authentication and authorization. For more information on tac_plus please see
 http://shrubbery.net/tac_plus.
 
-It allows a user to be part of many predefined groups that can allow different
-access to different devices based on device IP address, usernmae, and source IP
-address.
-
-Do not play with do_auth until you have a firm grasp on ``tac_plus`` and the
-syntax for ``do_auth.ini``!
-
-Users
-=====
-
-To define users you must specify a ``[users]`` section. A user must be assigned
-to one or more groups, one per line::
-
-    [users]
-    homer =
-        simpson_group
-        television_group
-    stimpy =
-        television_group
-
-Groups
-======
-
-Groups are assigned to users in the ``[users]`` section. Groups are defined in
-brackets, and can have any name. Each group can have up to eight options as
-defined below:
-
-host_deny
-    (Optional) Deny any user coming from this host.
-
-host_allow
-    (Mandatory if -i is specified) Allow users from this range.
-
-device_deny
-    (Optional) Deny any device with this IP.
-
-device_permit
-    (Mandatory if -d is specified) Allow this range.
-
-command_deny
-    (Optional) Deny these commands.
-
-command_permit
-    (Mandatory) Allow these commands.
-
-av_pairs
-    (Advanced - Use with care) List of av pairs to replace if found.
-
-exit_val
-    (Advanced - Use with care) hard code return value.
-
-These options are parsed in order until a match is found. For login authentication,
-the commands section is not parsed. If a match is not found, or a deny is
-found, we move on to the next group. At the end, we have an implicit deny if no
-groups match.
-
-An simple example is as follows::
-
-    [users]
-    homer =
-        simpson_group
-        television_group
-    stimpy =
-        television_group
-
-    [simpson_group]
-    host_deny =
-        1.1.1.1
-        1.1.1.2
-    host_allow =
-        1.1.1.*
-    device_permit =
-        10.1.1.*
-    command_permit =
-        .*
-
-    [television_group]
-    host_allow =
-        .*
-    device_permit =
-        .*
-    command_permit =
-        show.*
-
-Example tac_plus config line::
-
-    after authorization "/usr/bin/python /root/do_auth.pyc -i $address -fix_crs_bug -u $user -d $name -l /root/log.txt -f /root/do_auth.ini"
-
-The following ``av_pair`` example will replace any ``priv-lvl`` with
-``priv-lvl=1`` **only** if passed. Think of it as a find/replace function::
-
-    av_pairs =
-        priv-lvl=1
-
-Brocade devices
----------------
-
-Brocade has a vendor-specific attribute called ``brocade-privlvl``. It maps
-``priv-lvl`` to ``brocade-privlvl``, but the result is an account that has some
-privileges. Here is an example of how to map ``brocade-privlvl=5`` which has no
-modification rights. Unfortunately, it also requires you to specify the IP
-addresses of your
-Brocade devices.
-
-You could also put ``priv-lvl=15,brocade-privlvl=5`` or whatever your tac_plus
-deamon is passing. As long as the A/V pairs match the results are the same. In
-this example, we essentially replace the whole ``av_pair`` resulting in the user
-having read-only access.
-
-To work the Brocade-specific group must be above the other groups::
-
-    [brocade_readonly]
-    host_allow =
-        .*
-    device_permit =
-        192.168.1.*
-    command_permit =
-        .*
-    av_pairs =
-        priv-lvl,brocade-privlvl=5
-
-Cisco Nexus devices
--------------------
-
-Due to a slight change in the Nexus, ``do_auth`` is able to identify a device as
-a Cisco Nexus. In ``tac_plus.conf``, do the following::
-
-    service = exec {
-        priv-lvl = 1
-        shell:roles=\"\\"network-operator\\""
-        idletime = 3
-        timeout = 15
-    }
-    after authorization "<do_auth yada yada>"
-
-This configuration **WILL NOT** work without ``do_auth``, however, with
-``do_auth`` the ``shell:roles`` A/V pair will only be sent to Nexus switches,
-allowing your other devices to work correctly. These roles can also be modified
-in a ``do_auth`` group, as below::
-
-    av_pairs =
-        priv-lvl=15
-        shell:roles="network-admin"
-
-NOTE: You **must** use double quotes to get ``tac_plus`` to correctly pass
-"network-operator" in the ``service`` definition example above. Unless you are
-explicitly modifying the attribute with ``do_auth`` in ``av_pairs``, it will be
-adjusted for you!
-
-HP Procurve devices
--------------------
-
-This is the worst TACACS+ implementation I've ever seen and is the whole reason
-for the ``exit_val`` group option. This is to work around the incorrect
-implementation by HP. NOT MY FAULT!
-
-Setting ``exit_val`` to ``0`` makes it work (the Procurve doesn't like
-``AUTHOR_STATUS_PASS_REPL``). Unfortunately, this means you need to define your
-Procurves in a distinct group and it must be the **very first**
-group defined::
-
-    [fix_procurve]
-    host_allow =
-        .*
-    device_permit =
-        192.168.1.*
-    command_permit =
-        .*
-    exit_val =
-        0
-
-Known Issues
-============
-
-You must know your regular expressions. If you enter a bad expression, such as
-"*." instead of ".*", Python's "re" module will freak out and not evaluate the
-expression.
-
-Caveats
-=======
-
-Ordering of groups is crucial. One group can not take away what another group
-grants. If a match is not found, it will go on to the next group. If a deny is
-matched, it will go on to the next group. The groups should go from
-most-specific to least-specific.
-
-For example::
-
-    [users]
-    homer =
-        simpson_group
-        television_group
-    stimpy =
-        television_group
-
-    [simpson_group]
-    host_deny =
-        1.1.1.1
-        1.1.1.2
-    host_allow =
-        1.1.1.*
-    device_permit =
-        10.1.1.*
-    command_permit =
-        .*
-
-    [television_group]
-    host_allow =
-        .*
-    device_permit =
-        .*
-    command_permit =
-        show.*
-
-In this example, if ``television_group`` was put before ``simpson_group``,
-``simpson_group`` would never be called because ``televsion_group`` catches
-everything in ``device_permit``.
-
-License
-=======
-
-This program is free software; you can redistribute it and/or modify it under
-the terms of the GNU General Public License version 3 or any later version as
-published by the Free Software Foundation, http://www.gnu.org/
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
-PARTICULAR PURPOSE. See LICENSE in the ``do_auth`` source distribution for more
-details.
+Please see the README.rst file bundled with this program for information on how
+to use it.
 """
 
 __author__ = 'Dan Schmidt, Jathan McCollum'
 __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
-__license__ = 'GPL-3.0'
-__version__ = '1.11'
+__license__ = 'MIT'
+__version__ = '2.0'
 
 try:
     import configparser
@@ -263,12 +37,14 @@ try:
 except ImportError:
     got_getgrouplist = False
 
+
 # Defaults
 CONFIG = 'do_auth.ini'
 LOG_FILE = '/dev/null'
 LOG_LEVEL = logging.INFO
 LOG_FORMAT = "%(asctime)s [%(levelname)s]: %(message)s"
 DEBUG = os.getenv('DEBUG', False)
+#DEBUG = True
 
 # Placeholder for global logging object
 log = None
@@ -289,15 +65,6 @@ def _setup_logging(filename=LOG_FILE, format=LOG_FORMAT, level=LOG_LEVEL):
     )
     return logging.getLogger(__name__)
 
-def dprint(*args, **kwargs):
-    """Pretty-print the passed in values if global ``DEBUG`` is set."""
-    if DEBUG:
-        for a in args:
-            print(a)
-        for k,v in kwargs.items():
-            print('%s = %s' % (k.upper(), v))
-        if args and kwargs:
-            print('')
 
 def _product(*args, **kwds):
     """
@@ -319,6 +86,7 @@ try:
     from itertools import product
 except ImportError:
     product = _product
+
 
 def get_attribute(config, the_section, the_option, filename):
     """
@@ -364,9 +132,10 @@ def get_attribute(config, the_section, the_option, filename):
     log.debug('new_attributes = %s' % new_attributes)
     return new_attributes
 
+
 # Can't make it part of get_attribute... oh well...
 # We need someway to check to see if a username exists with out exit(1)
-def check_username(config, user_name):
+def check_username(config, username):
     """
     Check if a username exists in the config. Pukes if the config doesn't
     even have a "users" section.
@@ -376,7 +145,8 @@ def check_username(config, user_name):
         log.critical("users section doesn't exist!")
         sys.exit(1)
 
-    return config.has_option('users', user_name)
+    return config.has_option('users', username)
+
 
 def match_it(the_section, the_option, match_item, config, filename):
     """
@@ -394,6 +164,7 @@ def match_it(the_section, the_option, match_item, config, filename):
                 return True
     return False
 
+
 class DoAuthOptionParser(optparse.OptionParser):
     """
     A custom OptionParser to work with tac_plus post-authorization:
@@ -405,13 +176,13 @@ class DoAuthOptionParser(optparse.OptionParser):
         """Print a usage message using 'msg' to stderr and exit 1."""
         # Use the global log if it exists, else instantiate it.
         global log
-        print(log)
         if log is None:
             log = _setup_logging(filename=self.values.log_file)
         log.critical(msg)
 
         self.print_usage(sys.stderr)
         self.exit(1, "%s: error: %s\n" % (self.get_prog_name(), msg))
+
 
 def is_i_before_f(argv, parser):
     """
@@ -432,11 +203,11 @@ def is_i_before_f(argv, parser):
     # Iterate over the flag names and check their position in argv and make
     # sure that -i always comes before -f.
     for f, i in product(flags, ilags):
-        dprint('Checking %s against %s' % (f, i))
         if (f in argv and i in argv) and (argv.index(f) < argv.index(i)):
-            parser.error("%s must be specified after %s in the argument list." % (f, i))
-
+            msg = "%s must be specified after %s in the argument list." % (f, i)
+            parser.error(msg)
     return True
+
 
 def parse_args(argv=None):
     """
@@ -448,13 +219,14 @@ def parse_args(argv=None):
     if argv is None:
         argv = sys.argv
 
-    dprint(argv=argv)
+    usage = (
+        'usage: %prog -u <username> [-i <ip-addr>] [-d <device>] '
+        '[-f <config-file>] [-l <log-file>] [-D|--debug]'
+    )
 
-    usage = 'usage: %prog -u <username> [-i <ip-addr>] [-d <device>] [-f <config-file>] [-l <log-file>] [-D|--debug]'
-    desc = 'do_auth is a Python program to work as an authorization script for the ``tac_plus`` TACACS+ daemon to allow greater flexibility in TACACS+ authentication and authorization. For more information on tac_plus please see http://shrubbery.net/tac_plus.'
     ver ='%prog ' + __version__
 
-    parser = DoAuthOptionParser(usage=usage, description=desc, version=ver)
+    parser = DoAuthOptionParser(usage=usage, description=__doc__, version=ver)
     parser.add_option('-u', '--username', metavar='<username>',
                       help='(Mandatory) Username. [$user]')
     parser.add_option('-i', '--ip-addr', metavar='<ip-addr>',
@@ -473,8 +245,6 @@ def parse_args(argv=None):
 
     opts, args = parser.parse_args()
 
-    dprint('\nBefore:', opts=opts, args=args)
-
     if opts.docs:
         parser.exit(1, __doc__)
 
@@ -491,14 +261,64 @@ def parse_args(argv=None):
     # Make sure that -i always comes before -f
     is_i_before_f(argv, parser)
 
-    # Support legacy '-fix_crs_bug' option so it does not conflict with '-f' option
+    # Support legacy '-fix_crs_bug' option so it does not conflict with '-f'
+    # option
     if opts.config_file == 'ix_crs_bug' and opts.ip_addr:
         opts.ip_addr = '-fix_crs_bug'
         opts.config_file = CONFIG
 
-    dprint('\nAfter:', opts=opts, args=args)
-
     return opts, args
+
+
+# Default debug command is "show users wide". Later versions will allow this to
+# be set.
+DEBUG_AV_PAIRS = [
+    'service=shell',
+    'cmd=show',
+    'cmd-arg=users',
+    'cmd-arg=wide',
+    'cmd-arg=<cr>',
+]
+
+def get_av_pairs(is_debug=False):
+    """Read AV pairs from stdin."""
+    if is_debug:
+        return DEBUG_AV_PAIRS
+
+    log.debug('get_av_pairs()')
+    log.debug('=' * 40)
+    av_pairs = []
+    for line in sys.stdin:
+        line = line.strip()
+        log.debug('Incoming AV pair: %s' % line)
+        av_pairs.append(line)
+
+    #log.debug('AV pairs: %r' % (av_pairs,))
+    log.debug('=' * 40)
+    log.debug(' ')
+    return av_pairs
+
+
+def validate_av_pairs(av_pairs):
+    # Make sure that we have AV pairs or exit(1)
+    if not av_pairs:
+        log.info('No AV pairs!')
+        log.critical('Did you forget "default service = permit" in tac_plus.conf?')
+        log.critical('Confused: Exiting(1)')
+        sys.exit(1)
+
+
+def read_config(filename):
+    config = configparser.SafeConfigParser()
+    try:
+        config.readfp(open(filename))
+    except (IOError, configparser.ParsingError):
+        log.critical('Could not open/parse config file: %r' % (filename,))
+        sys.exit(1)
+
+    log.debug('Got config: %s' % config)
+    return config
+
 
 def main():
     # Defaults
@@ -507,7 +327,7 @@ def main():
 
     filename = opts.config_file
     log_name = opts.log_file
-    user_name = opts.username
+    username = opts.username
     ip_addr = opts.ip_addr
     device = opts.device
     is_debug = opts.debug
@@ -521,28 +341,18 @@ def main():
     log = _setup_logging(filename=log_name)
 
     # DEBUG! We at least got CALLED (and the logger works!)
-    log.debug('Hello World!')
+    log.debug('do_auth started with args %s' % sys.argv[1:])
 
-    # Read AV pairs
-    av_pairs = []
-    if not is_debug:
-        for line in sys.stdin:
-            av_pairs.append(line)
+    # First and foremost, can we even read the config?
+    config = read_config(filename)
 
-        log.debug('AV pairs: %r' % av_pairs)
+    # Read incoming AV Pairs from stdin
+    if device:
+        log.info('Device: %s' % device)
+    av_pairs = get_av_pairs(is_debug)
 
-    else:
-        # Default Debug command is "show users wide"
-        # Later versions will allow this to be set
-        av_pairs.append("service=shell\n")
-        av_pairs.append("cmd=show\n")
-        av_pairs.append("cmd-arg=users\n")
-        av_pairs.append("cmd-arg=wide\n")
-        av_pairs.append("cmd-arg=<cr>\n")
-
-    # DEBUG - print av_pairs
-    for item in av_pairs:
-        log.debug('AV item: %r' % item)
+    # Make sure that we have AV pairs
+    validate_av_pairs(av_pairs)
 
     # Function to make cmd's readable
     # Not very good, but will do for now
@@ -550,16 +360,13 @@ def main():
     the_command = ""
     return_pairs = ""
 
-    if not len(av_pairs) > 0:
-        log.info('No av pairs!!')
-        if device:
-            log.info('Device:%s' % device)
-
-        log.critical('Did you forget "default service = permit" in tac_plus.conf?')
-        log.critical('Confused - exiting(1)!')
-        sys.exit(1)
-
-    if (av_pairs[0] == "service=shell\n"):
+    #
+    # Commands
+    #
+    # Process commands
+    log.debug('validate_commands()')
+    log.debug('=' * 40)
+    if (av_pairs[0] == "service=shell"):
         # $**@ Nexus!
         if av_pairs[1] == ("cmd=\n"): # #&*@ Nexus!
             if len(av_pairs) > 2:
@@ -607,35 +414,33 @@ def main():
                     return_pairs.remove(item)
     else:
          return_pairs = av_pairs
+    log.debug('=' * 40)
+    log.debug(' ')
 
-    config = configparser.SafeConfigParser()
-    try:
-        config.readfp(open(filename))
-    except (IOError, configparser.ParsingError):
-        log.critical("Can't open/parse config file: '%s'" % (filename))
-        sys.exit(1)
-
-    log.debug('Got config: %s' % config)
-
-    the_section = "users"
+    #
+    # Users
+    #
+    #def validate_user(username):
 
     # If the user doesn't exist, just use the default settings
-    # Kind of a hack, but it works because we only get_attribute on user_name once.
+    # Kind of a hack, but it works because we only get_attribute on username once.
     # We have the : in there which we can use to split if required
-    log.debug('Checking username: %s' % user_name)
-    if not check_username(config, user_name):
+    log.debug('validate_user()')
+    log.debug('=' * 40)
+    log.debug('Checking username: %s' % username)
+    if not check_username(config, username):
         log.debug('username not found; searching for default')
-        user_name = (user_name + ":(default)")
+        username = (username + ":(default)")
         groups = get_attribute(config, "users", "default", filename)
     else:
         log.debug('username found in config')
-        groups = get_attribute(config, "users", user_name, filename)
+        groups = get_attribute(config, "users", username, filename)
 
     if '_nss' in groups and got_getgrouplist:
         log.debug('Got special group _nss and have getgrouplist, importing nss groups')
         try:
-                pwd_user = pwd_getpwnam(user_name)
-                os_group = os_getgrouplist(user_name, pwd_user[3])
+                pwd_user = pwd_getpwnam(username)
+                os_group = os_getgrouplist(username, pwd_user[3])
                 for gid in os_group:
                         try:
                                 group = grp_getgrgid(gid)
@@ -645,8 +450,15 @@ def main():
                                 pass
         except KeyError:
                 log.debug('User not found in NSS')
-        log.debug('NSS Groups: %s' % (groups)) 
+        log.debug('NSS Groups: %s' % (groups))
+    log.debug('=' * 40)
+    log.debug(' ')
 
+    #
+    # Groups
+    #
+    log.debug('validate_groups()')
+    log.debug('=' * 40)
     log.debug('About to check groups')
     for this_group in groups:
         # Check $address
@@ -655,7 +467,7 @@ def main():
             if match_it(this_group, "host_deny", ip_addr, config, filename):
                 if this_group == groups[-1]:
                     log.info("User '%s' denied from source '%s' in '%s'->'%s'"
-                             % (user_name, ip_addr, this_group, "host_deny"))
+                             % (username, ip_addr, this_group, "host_deny"))
                     sys.exit(1)
                 else:
                     # HUM... afterthought.  We need it to continue if more groups exist
@@ -670,7 +482,7 @@ def main():
                     pass
                 elif this_group == groups[-1]:
                     log.info("User '%s' not allowed from source '%s' in '%s'->'%s'"
-                             % (user_name, ip_addr, this_group, "host_allow"))
+                             % (username, ip_addr, this_group, "host_allow"))
                     sys.exit(1)
                 else:
                     continue
@@ -681,7 +493,7 @@ def main():
             if match_it(this_group, "device_deny", device, config, filename):
                 if this_group == groups[-1]:
                     log.info("User '%s' denied access to device '%s' in '%s'->'%s'"
-                             % (user_name, device, this_group, "device_deny"))
+                             % (username, device, this_group, "device_deny"))
                     sys.exit(1)
                 else:
                     continue
@@ -690,7 +502,7 @@ def main():
             if not match_it(this_group, "device_permit", device, config, filename):
                 if this_group == groups[-1]:
                     log.info("User '%s' not allowed access to device '%s' in '%s'->'%s'"
-                             % (user_name, device, this_group, "device_permit"))
+                             % (username, device, this_group, "device_permit"))
                     sys.exit(1)
                 else:
                     continue
@@ -705,24 +517,31 @@ def main():
                 # strings... Write a function to convert back and forth. We
                 # also need to be able to account for optional pairs that may
                 # be sent by the device ('*' delimited)
-                splt = item.split('=') 
+                splt = item.split('=')
+                log.debug('SPLT = %s' % (splt,))
                 if len(splt) > 1:
                     # DEBUG
                     for thing in splt:
                         log.debug('Thing: %s' % thing)
 
                     # TODO (jathan): item, splt, item2?  Need better var names...
+                    log.debug('TEMP AV_PAIRS = %s' % temp_av_pairs)
+                    log.debug('RETURN_PAIRS  = %s' % return_pairs)
                     for item2 in temp_av_pairs:
                         item2 = item2.strip()
-                        
+
                         # Pair replacing logic.
-                        if item2.find(',') > -1: 
+                        """
+                        if item2.find(',') > -1:
+                            log.debug('HAS COMMA = %s' % item2)
                             splt2 = item2.split(',')
+                            log.debug('HAS SPLT2 = %s' % splt2)
                             if len(splt2) > 1:
                                 #splt3 = splt2[0].split('=')
                                 if splt[0].find(splt2[0]) > -1:
                                     want_tac_pairs = True
                                     return_pairs[idx] = ('%s' % splt2[1])
+                                    log.debug('HAS COMMA VALUE = %s' % (return_pairs[idx],))
                         else:
                             splt2 = item2.split('=')
                             if len(splt2) > 1:
@@ -732,10 +551,19 @@ def main():
                                     pair = '%s=%s' % (splt2[0].strip(), splt2[1].strip())
                                     log.debug("Replacing pairs %s" % pair)
                                     return_pairs[idx] = pair
+                        """
+                        splt2 = item2.split('=')
+                        if len(splt2) > 1:
+                            if splt[0] == splt2[0].strip(): # Strip needed?
+                                want_tac_pairs = True
+                                # DEBUG
+                                pair = '%s=%s' % (splt2[0].strip(), splt2[1].strip())
+                                log.debug("Replacing pairs %s" % pair)
+                                return_pairs[idx] = pair
 
         # Some devices implement TACACS+ so poorly that you shouldn't even TRY to
         # mess with them. Like Procurves.
-        exit_val = '2' 
+        exit_val = '2'
         if config.has_option(this_group, "exit_val"):
             return_val = get_attribute(config, this_group, "exit_val", filename)
             return_val = return_val[0]  # more than 1 = they're stupid
@@ -747,15 +575,16 @@ def main():
 
         # First, let's make sure we're doing 'service = shell'. If not, just
         # allow it. I currently have little knowledge of cmd's sent by other
-        # services which is why this code is a little kludgy. 
+        # services which is why this code is a little kludgy.
         if return_pairs:
             splt = av_pairs[0].split('=') # Removed service in return_pairs
 
             if len(splt) > 1:
-                if not splt[1].strip() == 'shell': 
+                if not splt[1].strip() == 'shell':
                     log.info("User '%s' granted non-shell access to device '%s' in group '%s' from '%s'"
-                             % (user_name, device, this_group, ip_addr))
-                    return_pairs = av_pairs[2:] # Cut the first two?
+                             % (username, device, this_group, ip_addr))
+                    #return_pairs = av_pairs[2:] # Cut the first two?
+                    return_pairs = av_pairs[1:] # Cut the first two?
 
                     # DEBUG
                     for item in return_pairs:
@@ -779,7 +608,7 @@ def main():
                 print(item.strip('\n'))
 
             log.info("User '%s' granted access to device '%s' in group '%s' from '%s'"
-                     % (user_name, device, this_group, ip_addr))
+                     % (username, device, this_group, ip_addr))
             # DEBUG
             log.debug("Exiting status %s" % exit_val)
             sys.exit(int(exit_val))
@@ -790,7 +619,7 @@ def main():
 
                 if this_group == groups[-1]:
                     log.info("User '%s' denied command '%s' to device '%s' in '%s'->'%s'"
-                             % (user_name, the_command, device, this_group, "command_deny"))
+                             % (username, the_command, device, this_group, "command_deny"))
                     sys.exit(1)
 
                 else:
@@ -798,7 +627,7 @@ def main():
 
             elif match_it(this_group, "command_permit", the_command, config, filename):
                 log.info("User '%s' allowed command '%s' to device '%s' in '%s'->'%s'"
-                         % (user_name, the_command, device, this_group, "command_permit"))
+                         % (username, the_command, device, this_group, "command_permit"))
                 sys.exit(0)
 
             # Exit & log if last group
@@ -806,19 +635,21 @@ def main():
 
                 if this_group == groups[-1]:
                     log.info("User '%s' not allowed command '%s' to device '%s' in any group"
-                             % (user_name, the_command, device))
+                             % (username, the_command, device))
 
-                    #Hum... This only works if it's the last group/only group.  
+                    #Hum... This only works if it's the last group/only group.
                     sys.exit(1)
 
                 else:
                     continue
+    log.debug('=' * 40)
 
     # Implicit deny at the end. This should never happen, but in case it ever
     # does, it's not failing silently and you will know! :)
     log.info("User '%s' not allowed access to device '%s' from '%s' in any group"
-             % (user_name, device, ip_addr))
+             % (username, device, ip_addr))
     sys.exit(1)
-            
+
+
 if __name__ == "__main__":
     main()
