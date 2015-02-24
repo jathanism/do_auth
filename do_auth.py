@@ -400,7 +400,6 @@ def main():
     log = _setup_logging(filename=log_name)
 
     # DEBUG! We at least got CALLED (and the logger works!)
-    #log.info('do_auth started with args %s' % sys.argv[1:])
     log.debug('do_auth started with args %s' % sys.argv[1:])
 
     # First and foremost, can we even read the config?
@@ -663,8 +662,6 @@ def main():
             shell_info = splt[1].strip()
             log.info('Got shell? %s' % shell_info)
             if len(splt) > 1:
-                log.info('Got shell? %s' % shell_info)
-                #if not splt[1].strip() == 'shell':
                 if shell_info not in services:
                     msg = (
                         '%r granted non-shell access to device %r in '
