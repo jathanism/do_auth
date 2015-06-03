@@ -5,6 +5,32 @@ do_auth.py
 Versions
 ========
 
+1.12
+----
+
++ Added support for attributes with comma-separated values. Currently this only
+  applies to the JUNOS "user-permssions" attribute. This is a stop-gap fix as
+  we prepare version 2.0!
++ Improved debug logging slightly to help visualize return_pairs and modified
+  a/v pairs using the "av_pairs" config option.
+
+1.11
+----
+
++ Python 3 compatibility.
++ NSS Group support. Add group ``_nss`` to your default user to get NSS groups
+  for users (Python 3 required).
+
+1.10
+----
+
++ Bugfix in config parser to properly report when file can't be found.
++ Option-parsing converted to use Python's optparse module.
++ Usage docs cleaned up and only displayed when --docs flag is passed.
++ LICENSE (GPLv3) file added to project root.
++ Change history moved to CHANGELOG.rst.
++ Wanted/desired features added to TODO.rst.
+
 1.93.2
 ------
 

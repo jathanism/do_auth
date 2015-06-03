@@ -4,6 +4,15 @@ Changelog
 
 The change history, in order from newest to oldest.
 
+1.12
+====
+
++ Added support for attributes with comma-separated values. Currently this only
+  applies to the JUNOS "user-permssions" attribute. This is a stop-gap fix as
+  we prepare version 2.0!
++ Improved debug logging slightly to help visualize return_pairs and modified
+  a/v pairs using the "av_pairs" config option.
+
 1.11
 ====
 

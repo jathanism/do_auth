@@ -243,7 +243,7 @@ __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
 __license__ = 'GPL-3.0'
-__version__ = '1.11'
+__version__ = '1.12'
 
 try:
     import configparser
@@ -276,6 +276,11 @@ log = None
 # Only display debug messages if we've set the DEBUG env variable
 if DEBUG:
     LOG_LEVEL = logging.DEBUG
+
+# FIXME(jathan): This is a quick hack to prevent the Juniper a/v pair for
+# 'user-permissions' to not be converted, because it is allowed to have a
+# comma-separated attribute value! This will be addressed generally in v2.0!
+SKIP_CONVERT = ['user-permissions']
 
 
 # Functions
@@ -696,9 +701,12 @@ def main():
                     continue
 
         # Attempt to modify return pairs
+        log.debug('About to modify return pairs.')
         want_tac_pairs = False
         if config.has_option(this_group, "av_pairs"):
             temp_av_pairs = get_attribute(config, this_group, "av_pairs", filename)
+            log.debug('temp_av_pairs = %r', temp_av_pairs)
+            log.debug('return_pairs = %r', return_pairs)
 
             for idx, item in enumerate(return_pairs):
                 # TODO (jathan): Turn av_pairs into a dict, not a list of
@@ -708,21 +716,28 @@ def main():
                 splt = item.split('=') 
                 if len(splt) > 1:
                     # DEBUG
-                    for thing in splt:
-                        log.debug('Thing: %s' % thing)
+                    attr, value = splt
+                    log.debug('%s: %s' % (attr, value))
 
                     # TODO (jathan): item, splt, item2?  Need better var names...
                     for item2 in temp_av_pairs:
                         item2 = item2.strip()
                         
-                        # Pair replacing logic.
-                        if item2.find(',') > -1: 
+                        # Pair replacing logic. This is used to convert pairs
+                        # (e.g. priv-lvl,brocade-privlvl=5
+
+                        # If attribute we're working w/ is whitelisted in
+                        # 'SKIP_CONVERT', then don't try to convert it.
+                        if attr not in SKIP_CONVERT and item2.find(',') > -1:
+                            # => ['priv-lvl', 'brocade-privlvl=5']
+
+                            # If there's a comma, this means we might want to
+                            # replace the pair.
                             splt2 = item2.split(',')
                             if len(splt2) > 1:
-                                #splt3 = splt2[0].split('=')
-                                if splt[0].find(splt2[0]) > -1:
+                                if splt[0] == splt2[0]:
                                     want_tac_pairs = True
-                                    return_pairs[idx] = ('%s' % splt2[1])
+                                    return_pairs[idx] = splt2[1]
                         else:
                             splt2 = item2.split('=')
                             if len(splt2) > 1:
@@ -748,6 +763,7 @@ def main():
         # First, let's make sure we're doing 'service = shell'. If not, just
         # allow it. I currently have little knowledge of cmd's sent by other
         # services which is why this code is a little kludgy. 
+        log.debug('Return pairs: %s' % return_pairs)
         if return_pairs:
             splt = av_pairs[0].split('=') # Removed service in return_pairs
 
@@ -768,10 +784,12 @@ def main():
                     else:
                         log.debug("Exiting status 0")
                         sys.exit(0) # Don't even TRY to mess with the tac pairs
+        else:
+            log.debug("No return_pairs.")
 
         # Proceed with shell stuff
         if not len(the_command) > 0:
-            log.debug("not len(the_command) > 0")
+            log.debug("Proceeding with shell processing.")
 
             for item in return_pairs:
                 # DEBUG
