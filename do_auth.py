@@ -243,7 +243,7 @@ __maintainer__ = 'Dan Schmidt, Jathan McCollum'
 __email__ = 'daniel.schmidt@wyo.gov'
 __copyright__ = 'Dan Schmidt'
 __license__ = 'GPL-3.0'
-__version__ = '1.12'
+__version__ = '1.13'
 
 try:
     import configparser
@@ -583,13 +583,24 @@ def main():
                 i = 2
                 our_command = av_pairs[i].split("=")
 
-                while not (our_command[1] == "<cr>\n"):
-                    the_command = the_command + " " + our_command[1].strip('\n')
-                    i = i + 1
-                    if i == len(av_pairs): # Firewalls don't give a <cr>!!
-                        break
+                if len(our_command[1]) > 1:
+                    while not (our_command[1] == "<cr>\n"):
+                        the_command = the_command + " " + our_command[1].strip('\n')
+                        i = i + 1
+                        if i == len(av_pairs): # Firewalls don't give a <cr>!!
+                            break
 
-                    our_command = av_pairs[i].split("=")
+                        our_command = av_pairs[i].split("=")
+                        while our_command[0] == '\n':
+                            i = i +1
+                            if i == len(av_pairs):
+                                our_command = ['break_loop', "<cr>\n"]
+                                break
+
+                            our_command = av_pairs[i].split("=")
+
+                        if len(our_command) == 1:
+                            our_command = ['cmd-arg'] + our_command
 
             # DEBUG - We got the command
             log.debug('Got command: %r' % the_command)

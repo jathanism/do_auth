@@ -4,6 +4,10 @@ Changelog
 
 The change history, in order from newest to oldest.
 
+1.13
+====
++ Added support for parsing of "long pairs" sent by Cisco ASR devices.
+
 1.12
 ====
 

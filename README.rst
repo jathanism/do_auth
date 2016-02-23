@@ -5,6 +5,10 @@ do_auth.py
 Versions
 ========
 
+1.13
+----
++ Added support for parsing of "long pairs" sent by Cisco ASR devices.
+
 1.12
 ----
 
