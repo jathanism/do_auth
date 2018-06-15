@@ -423,7 +423,7 @@ def match_it(the_section, the_option, match_item, config, filename):
     If deny section has a match for 10.1.1.1, return True, else False.
     If the section doesn't exist, we assume an implicit deny/false
     """
-    if config.has_option(the_section,the_option):
+    if config.has_option(the_section, the_option):
         our_list = get_attribute(config, the_section, the_option, filename)
         for item in our_list:
             # Brute force assuming that this is a network block
@@ -697,7 +697,7 @@ def main():
                                 pass
         except KeyError:
                 log.debug('User not found in NSS')
-        log.debug('NSS Groups: %s' % (groups)) 
+        log.debug('NSS Groups: %s' % (groups))
 
     log.debug('About to check groups')
     for this_group in groups:
@@ -760,7 +760,7 @@ def main():
                 # strings... Write a function to convert back and forth. We
                 # also need to be able to account for optional pairs that may
                 # be sent by the device ('*' delimited)
-                splt = item.split('=') 
+                splt = item.split('=')
                 if len(splt) > 1:
                     # DEBUG
                     attr, value = splt
@@ -769,7 +769,7 @@ def main():
                     # TODO (jathan): item, splt, item2?  Need better var names...
                     for item2 in temp_av_pairs:
                         item2 = item2.strip()
-                        
+
                         # Pair replacing logic. This is used to convert pairs
                         # (e.g. priv-lvl,brocade-privlvl=5
 
@@ -797,7 +797,7 @@ def main():
 
         # Some devices implement TACACS+ so poorly that you shouldn't even TRY to
         # mess with them. Like Procurves.
-        exit_val = '2' 
+        exit_val = '2'
         if config.has_option(this_group, "exit_val"):
             return_val = get_attribute(config, this_group, "exit_val", filename)
             return_val = return_val[0]  # more than 1 = they're stupid
@@ -809,13 +809,13 @@ def main():
 
         # First, let's make sure we're doing 'service = shell'. If not, just
         # allow it. I currently have little knowledge of cmd's sent by other
-        # services which is why this code is a little kludgy. 
+        # services which is why this code is a little kludgy.
         log.debug('Return pairs: %s' % return_pairs)
         if return_pairs:
             splt = av_pairs[0].split('=') # Removed service in return_pairs
 
             if len(splt) > 1:
-                if not splt[1].strip() == 'shell': 
+                if not splt[1].strip() == 'shell':
                     log.info("User '%s' granted non-shell access to device '%s' in group '%s' from '%s'"
                              % (user_name, device, this_group, ip_addr))
                     return_pairs = av_pairs[2:] # Cut the first two?
@@ -873,7 +873,7 @@ def main():
                     log.info("User '%s' not allowed command '%s' to device '%s' in any group"
                              % (user_name, the_command, device))
 
-                    #Hum... This only works if it's the last group/only group.  
+                    #Hum... This only works if it's the last group/only group.
                     sys.exit(1)
 
                 else:
@@ -884,6 +884,6 @@ def main():
     log.info("User '%s' not allowed access to device '%s' from '%s' in any group"
              % (user_name, device, ip_addr))
     sys.exit(1)
-            
+
 if __name__ == "__main__":
     main()
